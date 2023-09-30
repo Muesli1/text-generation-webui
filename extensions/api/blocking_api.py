@@ -7,6 +7,7 @@ from extensions.api.util import build_parameters, try_start_cloudflared
 from modules import shared
 from modules.chat import generate_chat_reply
 from modules.LoRA import add_lora_to_model
+from modules.logging_colors import logger
 from modules.models import load_model, unload_model
 from modules.models_settings import get_model_metadata, update_model_parameters
 from modules.text_generation import (
@@ -54,11 +55,11 @@ class Handler(BaseHTTPRequestHandler):
             for a in generator:
                 answer = a
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'text': answer
                 }]
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
@@ -81,11 +82,11 @@ class Handler(BaseHTTPRequestHandler):
             for a in generator:
                 answer = a
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'history': answer
                 }]
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
@@ -96,9 +97,9 @@ class Handler(BaseHTTPRequestHandler):
 
             stop_everything_event()
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': 'success'
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
@@ -115,9 +116,6 @@ class Handler(BaseHTTPRequestHandler):
             if action == 'load':
                 model_name = body['model_name']
                 args = body.get('args', {})
-                print('args', args)
-                for k in args:
-                    setattr(shared.args, k, args[k])
 
                 shared.model_name = model_name
                 unload_model()
@@ -125,6 +123,9 @@ class Handler(BaseHTTPRequestHandler):
                 model_settings = get_model_metadata(shared.model_name)
                 shared.settings.update({k: v for k, v in model_settings.items() if k in shared.settings})
                 update_model_parameters(model_settings, initial=True)
+
+                for k in args:
+                    setattr(shared.args, k, args[k])
 
                 if shared.settings['mode'] != 'instruct':
                     shared.settings['instruction_template'] = None
@@ -135,7 +136,7 @@ class Handler(BaseHTTPRequestHandler):
                         add_lora_to_model(shared.args.lora)  # list
 
                 except Exception as e:
-                    response = json.dumps({'error': {'message': repr(e)}})
+                    response = json.dumps(encrypt_server_side({'error': {'message': repr(e)}}))
 
                     self.wfile.write(response.encode('utf-8'))
                     raise e
@@ -155,10 +156,12 @@ class Handler(BaseHTTPRequestHandler):
 
             elif action == 'info':
                 result = get_model_info()
+            else:
+                return
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'result': result,
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
@@ -168,11 +171,11 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
 
             tokens = encode(body['prompt'])[0]
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'tokens': len(tokens)
                 }]
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
         else:

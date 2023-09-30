@@ -4,7 +4,7 @@ from threading import Thread
 
 from websockets.legacy.server import WebSocketServerProtocol
 
-from extensions.api.safe_transfer import decrypt_message
+from extensions.api.safe_transfer import decrypt_message, encrypt_server_side
 from extensions.api.util import (
     build_parameters,
     try_start_cloudflared,
@@ -42,20 +42,20 @@ async def _handle_stream_message(websocket: WebSocketServerProtocol, message):
         if to_send is None or chr(0xfffd) in to_send:  # partial unicode character, don't send it yet.
             continue
 
-        await websocket.send(json.dumps({
+        await websocket.send(json.dumps(encrypt_server_side({
             'event': 'text_stream',
             'message_num': message_num,
             'text': to_send
-        }))
+        })))
 
         await asyncio.sleep(0)
         skip_index += len(to_send)
         message_num += 1
 
-    await websocket.send(json.dumps({
+    await websocket.send(json.dumps(encrypt_server_side({
         'event': 'stream_end',
         'message_num': message_num
-    }))
+    })))
 
 
 @with_api_lock
@@ -76,19 +76,19 @@ async def _handle_chat_stream_message(websocket: WebSocketServerProtocol, messag
 
     message_num = 0
     for a in generator:
-        await websocket.send(json.dumps({
+        await websocket.send(json.dumps(encrypt_server_side({
             'event': 'text_stream',
             'message_num': message_num,
             'history': a
-        }))
+        })))
 
         await asyncio.sleep(0)
         message_num += 1
 
-    await websocket.send(json.dumps({
+    await websocket.send(json.dumps(encrypt_server_side({
         'event': 'stream_end',
         'message_num': message_num
-    }))
+    })))
 
 
 async def _handle_connection(websocket: WebSocketServerProtocol, path):

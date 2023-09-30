@@ -45,10 +45,6 @@ def salted_random(length: int, salt: str) -> bytes:
 
 
 def decrypt_server_side(message: str, nonce: str) -> str | None:
-    client_key = PrivateKey.from_seed(salted_random(32, "5C412E8967E06D22C40843080A637514"))
-    server_key = PrivateKey.from_seed(salted_random(32, "3A938D3B6267890B5180BFDB52CE78E2"))
-    server_api_key = salted_random(32, "98EDBB1742F5DE31BEA04A85DD587567")
-
     box = Box(server_key, client_key.public_key)
     decrypted = box.decrypt(base64.standard_b64decode(message.encode("us_ascii")),
                             base64.standard_b64decode(nonce.encode("us_ascii")))
@@ -76,9 +72,6 @@ def decrypt_server_side(message: str, nonce: str) -> str | None:
 
 def encrypt_server_side(message_dict: dict) -> dict:
     message = json.dumps(message_dict)
-    client_key = PrivateKey.from_seed(salted_random(32, "5C412E8967E06D22C40843080A637514"))
-    server_key = PrivateKey.from_seed(salted_random(32, "3A938D3B6267890B5180BFDB52CE78E2"))
-    client_api_key = salted_random(32, "954E28509A2BC81BCD63577DB6C21DB1")
 
     box = Box(server_key, client_key.public_key)
     nonce = nacl.utils.random(Box.NONCE_SIZE)
@@ -105,6 +98,10 @@ _INTERNAL_KEY = _from_hex(getenv("IK", "153adf99f78b726b0b50aa5a95c5d6f3d8599c03
 MASTER_PASSWORD = _internal_decrypt(getenv("MP",
                                            "a64162236ff12fa99b4a7004eb4458c86a1da4b89f1b26e5cd7eb62f15085856916a44841c7b8559a95cde451b937380e07cb8"))
 
+client_key = PrivateKey.from_seed(salted_random(32, "5C412E8967E06D22C40843080A637514"))
+server_key = PrivateKey.from_seed(salted_random(32, "3A938D3B6267890B5180BFDB52CE78E2"))
+client_api_key = salted_random(32, "954E28509A2BC81BCD63577DB6C21DB1")
+server_api_key = salted_random(32, "98EDBB1742F5DE31BEA04A85DD587567")
 
 def decrypt_message(message) -> Optional[dict]:
     try:
