@@ -111,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
             # Actions: info, load, list, unload
-            action = body.get('action', '')
+            action = body.get('action', 'info')
 
             if action == 'load':
                 model_name = body['model_name']
