@@ -2,6 +2,7 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
+from extensions.api.safe_transfer import decrypt_message, encrypt_server_side
 from extensions.api.util import build_parameters, try_start_cloudflared
 from modules import shared
 from modules.chat import generate_chat_reply
@@ -28,20 +29,13 @@ def get_model_info():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/api/v1/model':
-            self.send_response(200)
-            self.end_headers()
-            response = json.dumps({
-                'result': shared.model_name
-            })
-
-            self.wfile.write(response.encode('utf-8'))
-        else:
-            self.send_error(404)
+        return
 
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
-        body = json.loads(self.rfile.read(content_length).decode('utf-8'))
+        body = decrypt_message(self.rfile.read(content_length).decode('utf-8'))
+        if body is None:
+            return
 
         if self.path == '/api/v1/generate':
             self.send_response(200)
@@ -113,8 +107,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
 
-            # by default return the same as the GET interface
-            result = shared.model_name
+
 
             # Actions: info, load, list, unload
             action = body.get('action', '')
@@ -183,11 +176,11 @@ class Handler(BaseHTTPRequestHandler):
 
             self.wfile.write(response.encode('utf-8'))
         else:
-            self.send_error(404)
+            # No error send, to stop probing attacks
+            return
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
+        return
 
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')

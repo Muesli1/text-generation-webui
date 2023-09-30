@@ -2,6 +2,9 @@ import asyncio
 import json
 from threading import Thread
 
+from websockets.legacy.server import WebSocketServerProtocol
+
+from extensions.api.safe_transfer import decrypt_message
 from extensions.api.util import (
     build_parameters,
     try_start_cloudflared,
@@ -16,8 +19,11 @@ PATH = '/api/v1/stream'
 
 
 @with_api_lock
-async def _handle_stream_message(websocket, message):
-    message = json.loads(message)
+async def _handle_stream_message(websocket: WebSocketServerProtocol, message):
+    message = decrypt_message(message)
+    if message is None:
+        await websocket.close()
+        return
 
     prompt = message['prompt']
     generate_params = build_parameters(message)
@@ -53,8 +59,11 @@ async def _handle_stream_message(websocket, message):
 
 
 @with_api_lock
-async def _handle_chat_stream_message(websocket, message):
-    body = json.loads(message)
+async def _handle_chat_stream_message(websocket: WebSocketServerProtocol, message):
+    body = decrypt_message(message)
+    if body is None:
+        await websocket.close()
+        return
 
     user_input = body['user_input']
     generate_params = build_parameters(body, chat=True)
@@ -82,7 +91,7 @@ async def _handle_chat_stream_message(websocket, message):
     }))
 
 
-async def _handle_connection(websocket, path):
+async def _handle_connection(websocket: WebSocketServerProtocol, path):
 
     if path == '/api/v1/stream':
         async for message in websocket:
