@@ -2,10 +2,14 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
+import numpy as np
+
+from extensions.api.safe_transfer import decrypt_message, encrypt_server_side
 from extensions.api.util import build_parameters, try_start_cloudflared
 from modules import shared
 from modules.chat import generate_chat_reply
 from modules.LoRA import add_lora_to_model
+from modules.logging_colors import logger
 from modules.models import load_model, unload_model
 from modules.models_settings import get_model_metadata, update_model_parameters
 from modules.text_generation import (
@@ -28,25 +32,21 @@ def get_model_info():
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
-        if self.path == '/api/v1/model':
-            self.send_response(200)
-            self.end_headers()
-            response = json.dumps({
-                'result': shared.model_name
-            })
+        return
 
-            self.wfile.write(response.encode('utf-8'))
-        else:
-            self.send_error(404)
+    def send_OK_json_response(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
 
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
-        body = json.loads(self.rfile.read(content_length).decode('utf-8'))
+        body = decrypt_message(self.rfile.read(content_length).decode('utf-8'))
+        if body is None:
+            return
 
         if self.path == '/api/v1/generate':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             prompt = body['prompt']
             generate_params = build_parameters(body)
@@ -60,18 +60,16 @@ class Handler(BaseHTTPRequestHandler):
             for a in generator:
                 answer = a
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'text': answer
                 }]
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/chat':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             user_input = body['user_input']
             regenerate = body.get('regenerate', False)
@@ -87,44 +85,34 @@ class Handler(BaseHTTPRequestHandler):
             for a in generator:
                 answer = a
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'history': answer
                 }]
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/stop-stream':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             stop_everything_event()
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': 'success'
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/model':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-
-            # by default return the same as the GET interface
-            result = shared.model_name
+            self.send_OK_json_response()
 
             # Actions: info, load, list, unload
-            action = body.get('action', '')
+            action = body.get('action', 'info')
 
             if action == 'load':
                 model_name = body['model_name']
                 args = body.get('args', {})
-                print('args', args)
-                for k in args:
-                    setattr(shared.args, k, args[k])
 
                 shared.model_name = model_name
                 unload_model()
@@ -132,6 +120,9 @@ class Handler(BaseHTTPRequestHandler):
                 model_settings = get_model_metadata(shared.model_name)
                 shared.settings.update({k: v for k, v in model_settings.items() if k in shared.settings})
                 update_model_parameters(model_settings, initial=True)
+
+                for k in args:
+                    setattr(shared.args, k, args[k])
 
                 if shared.settings['mode'] != 'instruct':
                     shared.settings['instruction_template'] = None
@@ -142,7 +133,7 @@ class Handler(BaseHTTPRequestHandler):
                         add_lora_to_model(shared.args.lora)  # list
 
                 except Exception as e:
-                    response = json.dumps({'error': {'message': repr(e)}})
+                    response = json.dumps(encrypt_server_side({'error': {'message': repr(e)}}))
 
                     self.wfile.write(response.encode('utf-8'))
                     raise e
@@ -162,32 +153,45 @@ class Handler(BaseHTTPRequestHandler):
 
             elif action == 'info':
                 result = get_model_info()
+            else:
+                return
 
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'result': result,
-            })
+            }))
 
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/token-count':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             tokens = encode(body['prompt'])[0]
-            response = json.dumps({
+            response = json.dumps(encrypt_server_side({
                 'results': [{
                     'tokens': len(tokens)
                 }]
-            })
+            }))
+
+            self.wfile.write(response.encode('utf-8'))
+        elif self.path == '/api/v1/tokenize':
+            self.send_OK_json_response()
+
+            tokens: np.ndarray = encode(body['prompt'])[0]
+
+            response = json.dumps(encrypt_server_side({
+                'results': [{
+                    'tokens': tokens.tolist(),
+                    'shape': list(tokens.shape)
+                }]
+            }))
 
             self.wfile.write(response.encode('utf-8'))
         else:
-            self.send_error(404)
+            # No error send, to stop probing attacks
+            return
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.end_headers()
+        return
 
     def end_headers(self):
         self.send_header('Access-Control-Allow-Origin', '*')
