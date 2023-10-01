@@ -2,6 +2,8 @@ import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from threading import Thread
 
+import numpy as np
+
 from extensions.api.safe_transfer import decrypt_message, encrypt_server_side
 from extensions.api.util import build_parameters, try_start_cloudflared
 from modules import shared
@@ -32,6 +34,11 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         return
 
+    def send_OK_json_response(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         body = decrypt_message(self.rfile.read(content_length).decode('utf-8'))
@@ -39,9 +46,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == '/api/v1/generate':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             prompt = body['prompt']
             generate_params = build_parameters(body)
@@ -64,9 +69,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/chat':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             user_input = body['user_input']
             regenerate = body.get('regenerate', False)
@@ -91,9 +94,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/stop-stream':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             stop_everything_event()
 
@@ -104,11 +105,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/model':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-
-
+            self.send_OK_json_response()
 
             # Actions: info, load, list, unload
             action = body.get('action', 'info')
@@ -166,14 +163,25 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(response.encode('utf-8'))
 
         elif self.path == '/api/v1/token-count':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
+            self.send_OK_json_response()
 
             tokens = encode(body['prompt'])[0]
             response = json.dumps(encrypt_server_side({
                 'results': [{
                     'tokens': len(tokens)
+                }]
+            }))
+
+            self.wfile.write(response.encode('utf-8'))
+        elif self.path == '/api/v1/tokenize':
+            self.send_OK_json_response()
+
+            tokens: np.ndarray = encode(body['prompt'])[0]
+
+            response = json.dumps(encrypt_server_side({
+                'results': [{
+                    'tokens': tokens.tolist(),
+                    'shape': list(tokens.shape)
                 }]
             }))
 
