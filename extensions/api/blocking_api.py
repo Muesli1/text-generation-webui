@@ -39,6 +39,11 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header('Content-Type', 'application/json')
         self.end_headers()
 
+    def send_internal_failure_json_response(self):
+        self.send_response(500)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+
     def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         body = decrypt_message(self.rfile.read(content_length).decode('utf-8'))
@@ -46,7 +51,16 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if self.path == '/api/v1/generate':
-            self.send_OK_json_response()
+            # No model
+            if shared.model_name == 'None' or shared.model is None:
+                self.send_internal_failure_json_response()
+
+                response = json.dumps(encrypt_server_side({
+                    'error': 'No model is loaded!'
+                }))
+
+                self.wfile.write(response.encode('utf-8'))
+                return
 
             prompt = body['prompt']
             generate_params = build_parameters(body)
@@ -65,6 +79,7 @@ class Handler(BaseHTTPRequestHandler):
                     'text': answer
                 }]
             }))
+
 
             self.wfile.write(response.encode('utf-8'))
 

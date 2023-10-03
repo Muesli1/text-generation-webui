@@ -9,6 +9,7 @@ from typing import Dict, Optional, Tuple
 
 import nacl.utils
 from nacl.bindings.crypto_pwhash import crypto_pwhash_alg, crypto_pwhash_ALG_ARGON2ID13
+from nacl.exceptions import CryptoError
 from nacl.hash import blake2b, BLAKE2B_SALTBYTES
 from nacl.public import PrivateKey, Box
 from nacl.secret import SecretBox
@@ -119,4 +120,6 @@ def decrypt_message(message) -> Optional[dict]:
     except binascii.Error as e:
         return None
     except KeyError as e:
+        return None
+    except CryptoError as e:
         return None
