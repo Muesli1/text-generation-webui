@@ -62,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(response.encode('utf-8'))
                 return
 
+            self.send_OK_json_response()
+
             prompt = body['prompt']
             generate_params = build_parameters(body)
             stopping_strings = generate_params.pop('stopping_strings')
